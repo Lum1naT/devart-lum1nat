@@ -87,8 +87,10 @@ def main():
                         url = "https://www.sreality.cz/detail/prodej/" + \
                             type + "/" + description + "/" + location + "/" + link
 
-                        sql = "SELECT * FROM sreality WHERE url = %s AND import = %s"
-                        data = ("https://www.test.test/", 0)
+                        api_url = list["_links"]["self"]["href"]
+
+                        sql = "SELECT * FROM `sreality` WHERE url = %s"
+                        data = (url, )
                         cursor.execute(sql, data)
 
                         result = cursor.fetchall()
@@ -96,33 +98,34 @@ def main():
 
                         if(result_found > 0):
                             # Update
-                            print("rowcount: " + str(result_found))
-
-                            for row in result:
-                                if(row[3] < now-timedelta(days=30)):
-                                    pass
-                                    # lezak - prepsat do db a upravit col import
-                                else:
-                                    print("not older.")
-                                    # fix this logic
-                            data = (now, "https://www.test.test/")
+                            data = (now, url)
                             statement = (
-                                "UPDATE sreality SET  posledny_scan = %s WHERE url = %s")
+                                "UPDATE sreality SET posledny_scan = %s WHERE url = %s")
                             cursor.execute(statement, data)
 
+                            for row in result:
+                                # row[3] = column pridano, row[5] = column import
+                                if(row[3] < now-timedelta(days=30) and row[5] == 0):
+                                    # update import col in sreality - more handled via Integromat
+                                    data = (1, url)
+                                    statement = (
+                                        "UPDATE sreality SET `import` = %s WHERE url = %s")
+                                    cursor.execute(statement, data)
+
+                                else:
+                                    pass  # print("not older.")
                         else:
-                            # Create
-                            data = (url, type, today, today, 0)
-                            statement = ("INSERT INTO sreality "
-                                         "(url, typ, pridano, posledny_scan, import) "
-                                         "VALUES (%s, %s, %s, %s, %s)")
+                            # Create new record in table sreality (scrape)
+                            data = (url, type, today, now, 0, api_url)
+                            statement = (
+                                "INSERT INTO sreality (url, typ, pridano, posledny_scan, import, api_url) VALUES (%s, %s, %s, %s, %s, %s)")
                             cursor.execute(statement, data)
 
                         count += 1
                     print(count)
 
     except Error as e:
-        print("Error while connecting to MySQL", e)
+        print("Error while connecting to MySQL: \n", e)
     finally:
         if connection.is_connected():
             cursor.close()
